@@ -237,3 +237,111 @@
     (ok true)
   )
 )
+
+;; Withdraw funds from the Rollup with merkle proof verification
+(define-public (withdraw 
+  (amount uint)
+  (token-identifier uint)
+  (merkle-proof (buff 256))
+)
+  (let 
+    (
+      (user-balance 
+        (default-to u0 
+          (map-get? user-balances 
+            { 
+              user: tx-sender, 
+              token-identifier: token-identifier 
+            }
+          )
+        )
+      )
+    )
+    ;; Input validation
+    (asserts! (is-valid-uint amount) ERR_INVALID_INPUT)
+    (asserts! (is-valid-uint token-identifier) ERR_INVALID_INPUT)
+    
+    ;; Validate sufficient balance
+    (asserts! (>= user-balance amount) ERR_INSUFFICIENT_FUNDS)
+    
+    ;; Verify merkle proof
+    (asserts! (validate-merkle-proof merkle-proof) ERR_INVALID_PROOF)
+    
+    ;; Update balance
+    (map-set user-balances 
+      { 
+        user: tx-sender, 
+        token-identifier: token-identifier 
+      } 
+      (- user-balance amount)
+    )
+    
+    ;; Transfer back to user
+    (as-contract 
+      (stx-transfer? amount (as-contract tx-sender) tx-sender)
+    )
+  )
+)
+
+;; Transfer assets between users within the rollup
+(define-public (transfer-in-rollup 
+  (from principal)
+  (to principal)
+  (amount uint)
+  (token-identifier uint)
+)
+  (begin
+    ;; Input validation
+    (asserts! (is-valid-principal from) ERR_INVALID_INPUT)
+    (asserts! (is-valid-principal to) ERR_INVALID_INPUT)
+    (asserts! (is-valid-uint amount) ERR_INVALID_INPUT)
+    (asserts! (is-valid-uint token-identifier) ERR_INVALID_INPUT)
+    
+    ;; Perform transfer logic
+    (let 
+      (
+        (sender-balance 
+          (default-to u0 
+            (map-get? user-balances 
+              { 
+                user: from, 
+                token-identifier: token-identifier 
+              }
+            )
+          )
+        )
+        (recipient-balance 
+          (default-to u0 
+            (map-get? user-balances 
+              { 
+                user: to, 
+                token-identifier: token-identifier 
+              }
+            )
+          )
+        )
+      )
+      ;; Validate sender has sufficient balance
+      (asserts! (>= sender-balance amount) ERR_INSUFFICIENT_FUNDS)
+      
+      ;; Update balances
+      (map-set user-balances 
+        { 
+          user: from, 
+          token-identifier: token-identifier 
+        } 
+        (- sender-balance amount)
+      )
+      
+      (map-set user-balances 
+        { 
+          user: to, 
+          token-identifier: token-identifier 
+        } 
+        (+ recipient-balance amount)
+      )
+    )
+    
+    (ok true)
+  )
+)
